@@ -76,7 +76,7 @@ const useAuth = () => {
 
 // --- Components ---
 
-const Sidebar = ({ activeTab, setActiveTab, logout, user }: any) => {
+const Sidebar = ({ activeTab, setActiveTab, logout, user, isOpen, setIsOpen }: any) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'recipes', label: 'Recipe Library', icon: BookOpen },
@@ -89,47 +89,74 @@ const Sidebar = ({ activeTab, setActiveTab, logout, user }: any) => {
     menuItems.push({ id: 'admin', label: 'Admin', icon: Settings });
   }
 
+  const handleTabChange = (id: string) => {
+    setActiveTab(id);
+    if (window.innerWidth < 768) {
+      setIsOpen(false);
+    }
+  };
+
   return (
-    <div className="w-64 bg-white border-right border-zinc-200 h-screen flex flex-col fixed left-0 top-0">
-      <div className="p-6 border-bottom border-zinc-100">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">SS</div>
-          <span className="font-bold text-xl tracking-tight text-zinc-900">SS Bakery</span>
+    <>
+      {/* Mobile Backdrop */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 md:hidden"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
+      <div className={`
+        w-64 bg-white border-r border-zinc-200 h-screen flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300 ease-in-out
+        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">SS</div>
+            <span className="font-bold text-xl tracking-tight text-zinc-900">SS Bakery</span>
+          </div>
+          <button 
+            onClick={() => setIsOpen(false)}
+            className="md:hidden p-2 text-zinc-400 hover:text-zinc-600"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        
+        <nav className="flex-1 p-4 space-y-1">
+          {menuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => handleTabChange(item.id)}
+              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
+                activeTab === item.id 
+                  ? 'bg-emerald-50 text-emerald-700 font-medium' 
+                  : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900'
+              }`}
+            >
+              <item.icon size={20} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="p-4 border-t border-zinc-100">
+          <button 
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 hover:bg-red-50 hover:text-red-600 transition-all"
+          >
+            <LogOut size={20} />
+            Logout
+          </button>
         </div>
       </div>
-      
-      <nav className="flex-1 p-4 space-y-1">
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
-              activeTab === item.id 
-                ? 'bg-emerald-50 text-emerald-700 font-medium' 
-                : 'text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900'
-            }`}
-          >
-            <item.icon size={20} />
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="p-4 border-top border-zinc-100">
-        <button 
-          onClick={logout}
-          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-zinc-500 hover:bg-red-50 hover:text-red-600 transition-all"
-        >
-          <LogOut size={20} />
-          Logout
-        </button>
-      </div>
-    </div>
+    </>
   );
 };
 
 const MarketingPage = ({ onLogin }: { onLogin: () => void }) => {
   const [sampleRecipes, setSampleRecipes] = useState<any[]>([]);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/recipes/public')
@@ -152,11 +179,13 @@ const MarketingPage = ({ onLogin }: { onLogin: () => void }) => {
   return (
     <div className="min-h-screen bg-white font-sans selection:bg-emerald-100">
       {/* Nav */}
-      <nav className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
+      <nav className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between relative z-50">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold">SS</div>
           <span className="font-bold text-xl tracking-tight text-zinc-900">SS Bakery</span>
         </div>
+
+        {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-600">
           <a href="#features" className="hover:text-emerald-600 transition-colors">Features</a>
           <button 
@@ -171,6 +200,48 @@ const MarketingPage = ({ onLogin }: { onLogin: () => void }) => {
             Sign In
           </button>
         </div>
+
+        {/* Mobile Menu Toggle */}
+        <button 
+          className="md:hidden p-2 text-zinc-600"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+        >
+          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+
+        {/* Mobile Nav Dropdown */}
+        <AnimatePresence>
+          {isMenuOpen && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute top-full left-0 right-0 bg-white border-b border-zinc-100 p-6 flex flex-col gap-4 md:hidden shadow-xl"
+            >
+              <a href="#features" onClick={() => setIsMenuOpen(false)} className="text-lg font-medium text-zinc-900">Features</a>
+              <button 
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="text-left text-lg font-medium text-zinc-900"
+              >
+                Demo
+              </button>
+              <a href="#pricing" onClick={() => setIsMenuOpen(false)} className="text-lg font-medium text-zinc-900">Pricing</a>
+              <a href="#faq" onClick={() => setIsMenuOpen(false)} className="text-lg font-medium text-zinc-900">FAQ</a>
+              <button 
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  onLogin();
+                }} 
+                className="w-full py-4 rounded-2xl bg-zinc-900 text-white font-bold text-center"
+              >
+                Sign In
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Hero */}
@@ -622,6 +693,7 @@ const Dashboard = ({ recipes, onSelectRecipe }: any) => {
 export default function App() {
   const { user, login, logout, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
@@ -665,9 +737,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} logout={logout} user={user} />
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        logout={logout} 
+        user={user} 
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
+      />
       
-      <main className="ml-64 p-10 max-w-6xl">
+      {/* Mobile Header */}
+      <div className="md:hidden bg-white border-b border-zinc-200 p-4 sticky top-0 z-30 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">SS</div>
+          <span className="font-bold text-lg tracking-tight text-zinc-900">SS Bakery</span>
+        </div>
+        <button 
+          onClick={() => setIsSidebarOpen(true)}
+          className="p-2 text-zinc-500 hover:bg-zinc-100 rounded-lg"
+        >
+          <Menu size={24} />
+        </button>
+      </div>
+
+      <main className="md:ml-64 p-6 md:p-10 max-w-6xl">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab + (selectedRecipe?.id || '')}
