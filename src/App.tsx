@@ -460,16 +460,30 @@ const MarketingPage = ({ onLogin }: { onLogin: () => void }) => {
 };
 
 const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
-  const [mode, setMode] = useState<'weight' | 'quantity'>('weight');
+  const [mode, setMode] = useState<'weight' | 'quantity' | 'flour'>('weight');
   const [targetWeight, setTargetWeight] = useState(recipe.base_batch_weight);
   const [quantity, setQuantity] = useState(10);
   const [unitWeight, setUnitWeight] = useState(800);
+  const [targetFlour, setTargetFlour] = useState(0);
+
+  const totalFlourBase = recipe.ingredients.filter(i => i.is_flour).reduce((acc, i) => acc + i.weight, 0);
+  const totalBakerPercent = recipe.ingredients.reduce((acc, i) => acc + (i.weight / totalFlourBase) * 100, 0);
 
   useEffect(() => {
     if (mode === 'quantity') {
       setTargetWeight(quantity * unitWeight);
+    } else if (mode === 'flour' && targetFlour > 0) {
+      // Ingredient Weight = (Baker % / 100) * Total Flour Weight
+      // Batch Size = (Total Baker % / 100) * Total Flour Weight
+      setTargetWeight((totalBakerPercent / 100) * targetFlour);
     }
-  }, [quantity, unitWeight, mode]);
+  }, [quantity, unitWeight, targetFlour, mode, totalBakerPercent]);
+
+  useEffect(() => {
+    if (mode === 'flour' && targetFlour === 0) {
+      setTargetFlour(totalFlourBase);
+    }
+  }, [mode, totalFlourBase]);
 
   if (!recipe.ingredients) {
     return (
@@ -479,7 +493,6 @@ const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
     );
   }
 
-  const totalFlour = recipe.ingredients.filter(i => i.is_flour).reduce((acc, i) => acc + i.weight, 0);
   const scaleFactor = targetWeight / recipe.base_batch_weight;
 
   return (
@@ -497,27 +510,33 @@ const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
             Print Sheet
           </button>
           <div className="flex bg-zinc-100 p-1 rounded-xl">
-          <button 
-            onClick={() => setMode('weight')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${mode === 'weight' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
-          >
-            By Weight
-          </button>
-          <button 
-            onClick={() => setMode('quantity')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${mode === 'quantity' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
-          >
-            By Quantity
-          </button>
+            <button 
+              onClick={() => setMode('weight')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${mode === 'weight' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
+            >
+              By Weight
+            </button>
+            <button 
+              onClick={() => setMode('quantity')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${mode === 'quantity' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
+            >
+              By Quantity
+            </button>
+            <button 
+              onClick={() => setMode('flour')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${mode === 'flour' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500'}`}
+            >
+              By Flour
+            </button>
+          </div>
         </div>
       </div>
-    </div>
 
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-1 space-y-6">
           <div className="bg-white p-6 rounded-3xl border border-zinc-200 shadow-sm">
             <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-4">Target Output</label>
-            {mode === 'weight' ? (
+            {mode === 'weight' && (
               <div className="space-y-4">
                 <input 
                   type="number" 
@@ -527,7 +546,8 @@ const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
                 />
                 <p className="text-zinc-400 font-medium">Total grams (g)</p>
               </div>
-            ) : (
+            )}
+            {mode === 'quantity' && (
               <div className="space-y-6">
                 <div>
                   <label className="block text-xs text-zinc-500 mb-2">Number of items</label>
@@ -547,6 +567,18 @@ const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
                     className="w-full text-2xl font-bold bg-zinc-50 p-3 rounded-2xl border border-zinc-100 focus:ring-emerald-500"
                   />
                 </div>
+              </div>
+            )}
+            {mode === 'flour' && (
+              <div className="space-y-4">
+                <input 
+                  type="number" 
+                  value={targetFlour}
+                  onChange={(e) => setTargetFlour(parseFloat(e.target.value) || 0)}
+                  className="w-full text-4xl font-bold border-none focus:ring-0 p-0 text-emerald-600"
+                />
+                <p className="text-zinc-400 font-medium">Total Flour Weight (g)</p>
+                <p className="text-xs text-zinc-400 italic">Scaling based on 100% flour ratio</p>
               </div>
             )}
           </div>
@@ -590,7 +622,7 @@ const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
               </thead>
               <tbody className="divide-y divide-zinc-50">
                 {recipe.ingredients.map((ing, idx) => {
-                  const bakerPercent = (ing.weight / totalFlour) * 100;
+                  const bakerPercent = (ing.weight / totalFlourBase) * 100;
                   const scaledWeight = ing.weight * scaleFactor;
                   return (
                     <tr key={idx} className="hover:bg-zinc-50/50 transition-colors">
@@ -614,7 +646,155 @@ const RecipeScaler = ({ recipe }: { recipe: Recipe }) => {
   );
 };
 
-const Dashboard = ({ recipes, onSelectRecipe }: any) => {
+const AddRecipeModal = ({ isOpen, onClose, onSave }: any) => {
+  const [name, setName] = useState('');
+  const [method, setMethod] = useState('');
+  const [ingredients, setIngredients] = useState<Partial<Ingredient>[]>([
+    { name: 'Strong Flour', weight: 1000, is_flour: true },
+    { name: 'Water', weight: 700, is_flour: false },
+    { name: 'Salt', weight: 20, is_flour: false },
+    { name: 'Yeast', weight: 10, is_flour: false },
+  ]);
+
+  const addIngredient = () => {
+    setIngredients([...ingredients, { name: '', weight: 0, is_flour: false }]);
+  };
+
+  const updateIngredient = (index: number, field: string, value: any) => {
+    const newIngs = [...ingredients];
+    newIngs[index] = { ...newIngs[index], [field]: value };
+    setIngredients(newIngs);
+  };
+
+  const removeIngredient = (index: number) => {
+    setIngredients(ingredients.filter((_, i) => i !== index));
+  };
+
+  const totalFlour = ingredients.filter(i => i.is_flour).reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+  const totalWeight = ingredients.reduce((acc, i) => acc + (Number(i.weight) || 0), 0);
+
+  const handleSave = () => {
+    if (!name || totalFlour === 0) {
+      alert('Please enter a recipe name and at least one flour ingredient.');
+      return;
+    }
+    onSave({
+      name,
+      method,
+      ingredients: ingredients.map(i => ({ ...i, weight: Number(i.weight) || 0 })),
+      base_batch_weight: totalWeight
+    });
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+          <h3 className="text-xl font-bold text-zinc-900">Create New Recipe</h3>
+          <button onClick={onClose} className="p-2 text-zinc-400 hover:text-zinc-600"><X size={24} /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+          <div className="space-y-4">
+            <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400">Recipe Identity</label>
+            <input 
+              type="text" 
+              placeholder="e.g. Country Sourdough 2024"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full text-2xl font-bold border-none focus:ring-0 p-0 placeholder:text-zinc-200"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400">Ingredients & Ratios</label>
+              <div className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                Total Flour: {totalFlour}g
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {ingredients.map((ing, idx) => {
+                const bakerPercent = totalFlour > 0 ? ((Number(ing.weight) || 0) / totalFlour) * 100 : 0;
+                return (
+                  <div key={idx} className="flex items-center gap-3 p-3 bg-zinc-50 rounded-2xl border border-zinc-100 group">
+                    <input 
+                      type="text" 
+                      placeholder="Ingredient name"
+                      value={ing.name}
+                      onChange={(e) => updateIngredient(idx, 'name', e.target.value)}
+                      className="flex-1 bg-transparent border-none focus:ring-0 font-medium text-zinc-900"
+                    />
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-zinc-200">
+                      <input 
+                        type="number" 
+                        placeholder="0"
+                        value={ing.weight}
+                        onChange={(e) => updateIngredient(idx, 'weight', e.target.value)}
+                        className="w-20 bg-transparent border-none focus:ring-0 text-right font-mono font-bold"
+                      />
+                      <span className="text-zinc-400 text-xs">g</span>
+                    </div>
+                    <div className="w-16 text-right font-mono text-xs text-zinc-400">
+                      {bakerPercent.toFixed(1)}%
+                    </div>
+                    <button 
+                      onClick={() => updateIngredient(idx, 'is_flour', !ing.is_flour)}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-tighter transition-all ${ing.is_flour ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-500'}`}
+                    >
+                      Flour
+                    </button>
+                    <button onClick={() => removeIngredient(idx)} className="p-2 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                      <X size={18} />
+                    </button>
+                  </div>
+                );
+              })}
+              <button 
+                onClick={addIngredient}
+                className="w-full py-3 border-2 border-dashed border-zinc-200 rounded-2xl text-zinc-400 font-bold text-sm hover:border-emerald-300 hover:text-emerald-600 transition-all flex items-center justify-center gap-2"
+              >
+                <Plus size={18} /> Add Ingredient
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <label className="block text-xs font-bold uppercase tracking-widest text-zinc-400">Method & Notes</label>
+            <textarea 
+              placeholder="Describe the mixing, bulk fermentation, and baking steps..."
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="w-full h-32 bg-zinc-50 rounded-2xl border border-zinc-100 p-4 text-zinc-600 focus:ring-emerald-500 focus:border-emerald-500"
+            />
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-zinc-100 bg-zinc-50 flex items-center justify-between">
+          <div className="text-sm text-zinc-500">
+            Total Batch Weight: <span className="font-bold text-zinc-900">{totalWeight}g</span>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-6 py-3 text-zinc-600 font-bold hover:text-zinc-900">Cancel</button>
+            <button onClick={handleSave} className="px-8 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 shadow-lg shadow-emerald-100">
+              Save Recipe
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const Dashboard = ({ recipes, onSelectRecipe, onAddRecipe }: any) => {
   return (
     <div className="space-y-10">
       <div className="flex items-center justify-between">
@@ -622,6 +802,12 @@ const Dashboard = ({ recipes, onSelectRecipe }: any) => {
           <h2 className="text-3xl font-bold text-zinc-900 tracking-tight">Welcome back, Baker</h2>
           <p className="text-zinc-500">Here's what's happening in your kitchen today.</p>
         </div>
+        <button 
+          onClick={onAddRecipe}
+          className="px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-100"
+        >
+          <Plus size={20} /> New Recipe
+        </button>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
@@ -694,6 +880,7 @@ export default function App() {
   const { user, login, logout, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
 
@@ -726,6 +913,26 @@ export default function App() {
           created_at: new Date().toISOString()
         }
       ]);
+    }
+  };
+
+  const saveRecipe = async (recipeData: any) => {
+    try {
+      const res = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recipeData)
+      });
+      if (!res.ok) throw new Error('Failed to save');
+      fetchRecipes();
+    } catch (error) {
+      console.warn('Backend unavailable, saving locally');
+      const newRecipe = {
+        ...recipeData,
+        id: Date.now(),
+        created_at: new Date().toISOString()
+      };
+      setRecipes([newRecipe, ...recipes]);
     }
   };
 
@@ -785,6 +992,7 @@ export default function App() {
                   <Dashboard 
                     recipes={recipes} 
                     onSelectRecipe={setSelectedRecipe}
+                    onAddRecipe={() => setIsAddModalOpen(true)}
                   />
                 )}
                 {activeTab === 'recipes' && (
@@ -922,6 +1130,12 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <AddRecipeModal 
+        isOpen={isAddModalOpen} 
+        onClose={() => setIsAddModalOpen(false)} 
+        onSave={saveRecipe}
+      />
     </div>
   );
 }
